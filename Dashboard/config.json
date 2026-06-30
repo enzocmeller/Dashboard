@@ -1,0 +1,25 @@
+{
+  "nass_api_key": "905149A8-FC47-30EE-9281-F993B0D4D6C0",
+
+  "states": "all",
+
+  "yield_start_year": 1990,
+  "condition_history_years": 12,
+
+  "ndvi_product": "vnp09h1-ndvi",
+  "ndvi_season_start_month": 4,
+  "ndvi_baseline_years": 5,
+  "ndvi_max_composites": 24,
+
+  "gdd_start_month": 5,
+
+  "top_counties_for_centroid": 15,
+
+  "request_delay_seconds": 0.5,
+  "request_timeout_seconds": 60,
+  "request_retries": 4,
+
+  "ca_bundle": "",
+
+  "open_meteo_commercial_key": ""
+}

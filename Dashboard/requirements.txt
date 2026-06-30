@@ -1,0 +1,8 @@
+# Intentionally empty.
+#
+# This project uses ONLY the Python standard library (urllib, json, csv,
+# sqlite3, statistics). There is nothing to pip install, which is what makes it
+# firewall-friendly and self-sufficient: if Python 3.10+ is present, it runs.
+#
+# Requirement: Python 3.10 or newer (for statistics.linear_regression /
+# statistics.correlation). 3.12+ recommended.

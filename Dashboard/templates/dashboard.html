@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>US Corn Statistics Dashboard</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#1a2129; --panel2:#212b35; --border:#2c3845;
+    --text:#e6edf3; --muted:#8b98a5; --accent:#f5a623; --grid:#2c3845;
+    --exc:#1a9850; --good:#91cf60; --fair:#fee08b; --poor:#fc8d59; --vpoor:#d73027;
+    --pos:#3aa675; --neg:#d9534f; --line:#6cb2eb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px}
+  header{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;
+         padding:14px 20px;border-bottom:1px solid var(--border);background:var(--panel)}
+  header h1{font-size:18px;margin:0;font-weight:600}
+  header h1 .corn{color:var(--accent)}
+  #stateName{font-size:16px;color:var(--accent);font-weight:600}
+  .meta{color:var(--muted);font-size:12px;margin-left:auto;text-align:right}
+  .wrap{padding:16px;display:flex;flex-direction:column;gap:16px}
+  .toprow{display:flex;gap:16px;flex-wrap:wrap}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px}
+  .kpis{display:flex;gap:12px;flex-wrap:wrap}
+  .kpi{flex:1 1 150px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 14px}
+  .kpi-l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+  .kpi-v{font-size:23px;font-weight:700;margin:3px 0 1px;font-variant-numeric:tabular-nums;line-height:1.1}
+  .kpi-s{font-size:11px;color:var(--muted)}
+  #mapMetric{width:auto;margin:0;padding:3px 6px;font-size:12px}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;
+         padding:12px 14px;min-width:0}
+  .panel h2{margin:0 0 8px;font-size:13px;font-weight:600;color:var(--muted);
+            text-transform:uppercase;letter-spacing:.04em}
+  .panel .sub{font-size:11px;color:var(--muted);margin:-4px 0 8px}
+  .chart{width:100%;height:260px}
+  #mapPanel{flex:0 0 320px}
+  #mapChart{height:230px}
+  #soilPanel{flex:1 1 240px;min-width:240px}
+  #phenPanel{flex:1 1 300px;min-width:280px}
+  #soilGauge{height:150px}#soilSpark{height:70px}
+  select{background:var(--panel2);color:var(--text);border:1px solid var(--border);
+         border-radius:6px;padding:6px 8px;font-size:14px;width:100%;margin-bottom:10px}
+  table.phen{width:100%;border-collapse:collapse;margin-top:6px}
+  table.phen th,table.phen td{padding:9px 8px;text-align:left;border-bottom:1px solid var(--border)}
+  table.phen th{color:var(--muted);font-weight:500;font-size:12px}
+  table.phen td.val{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  .bar{height:6px;border-radius:3px;background:var(--accent);margin-top:5px}
+  .nodata{display:flex;align-items:center;justify-content:center;height:100%;
+          color:var(--muted);font-size:13px;font-style:italic}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:6px}
+  .legend span{display:inline-flex;align-items:center;gap:4px}
+  .dot{width:10px;height:10px;border-radius:2px;display:inline-block}
+  .wxsplit{display:flex;gap:8px}.wxsplit>div{flex:1;height:200px}
+  .ndvisplit{display:flex;gap:14px;flex-wrap:wrap}.ndvisplit>div{height:280px}
+  #ndviChart{flex:3;min-width:320px}#ndviDevChart{flex:2;min-width:260px}
+  footer{padding:10px 20px;color:var(--muted);font-size:11px;border-top:1px solid var(--border)}
+  a{color:var(--line)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🌽 US <span class="corn">Corn</span> Statistics Dashboard</h1>
+  <span>State: <span id="stateName">—</span></span>
+  <div class="meta">
+    <div id="genTime"></div>
+    <div>Click a state on the map or use the selector</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="kpis" id="kpis"></div>
+
+  <div class="toprow">
+    <div class="panel" id="mapPanel">
+      <h2>Select state</h2>
+      <select id="stateSelect"></select>
+      <div id="mapChart" class="chart"></div>
+      <div class="sub" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span>Shade by</span>
+        <select id="mapMetric">
+          <option value="production">Production share</option>
+          <option value="ge">G+E condition</option>
+          <option value="ndvi">NDVI deviation</option>
+        </select>
+      </div>
+      <div class="sub" id="mapCap" style="margin-top:2px"></div>
+    </div>
+
+    <div class="panel" id="soilPanel">
+      <h2>Soil moisture · corn area</h2>
+      <div id="soilGauge"></div>
+      <div id="soilSpark"></div>
+      <div class="sub" id="soilSub"></div>
+    </div>
+
+    <div class="panel" id="phenPanel">
+      <h2>Phenology phase</h2>
+      <div class="sub" id="phenAsOf"></div>
+      <div id="phenBody"></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>US production share &amp; rank</h2>
+      <div class="sub" id="prodSub"></div>
+      <div id="prodChart" class="chart"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Crop quality (E/G/F/P/V)</h2>
+      <div class="sub" id="condAsOf"></div>
+      <div id="donutChart" class="chart"></div>
+    </div>
+
+    <div class="panel">
+      <h2>G+E condition · season</h2>
+      <div class="sub">This year vs. historical min / median / max</div>
+      <div id="geChart" class="chart"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Yield &amp; trend</h2>
+      <div class="sub">USDA NASS survey yield (bu/acre)</div>
+      <div id="yieldChart" class="chart"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Yield deviation (detrended)</h2>
+      <div class="sub">Actual minus trend — the real year-to-year change</div>
+      <div id="devChart" class="chart"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Yield ↔ G+E correlation</h2>
+      <div class="sub" id="corrSub"></div>
+      <div id="corrChart" class="chart"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Weather anomaly · corn area</h2>
+      <div class="sub">Forecast vs. 1991–2020 normal, by lead time</div>
+      <div class="wxsplit"><div id="wxTemp"></div><div id="wxPrecip"></div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Growing degree days (vs normal)</h2>
+      <div class="sub" id="gddSub"></div>
+      <div id="gddChart" class="chart"></div>
+    </div>
+
+    <div class="panel" style="grid-column:1/-1">
+      <h2>Satellite NDVI · GLAM (corn-masked)</h2>
+      <div class="sub" id="ndviSub"></div>
+      <div class="ndvisplit">
+        <div id="ndviChart"></div>
+        <div id="ndviDevChart"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  Sources: USDA NASS Quick Stats · Weather &amp; soil moisture by
+  <a href="https://open-meteo.com/">Open-Meteo</a> (CC-BY 4.0, ERA5) ·
+  NDVI by <a href="https://glam.nasaharvest.org/">NASA Harvest GLAM</a>
+  (geoBoundaries: Runfola et al. 2020). For internal analytics use.
+</footer>
+
+<script>/*__ECHARTS__*/</script>
+<script>
+const US_GEOJSON = /*__GEOJSON__*/;
+const DASH = /*__DATA__*/;
+
+const C = getComputedStyle(document.documentElement);
+const col = n => C.getPropertyValue(n).trim();
+const AXIS = {axisLine:{lineStyle:{color:col('--border')}},
+             axisLabel:{color:col('--muted')},
+             splitLine:{lineStyle:{color:col('--grid')}}};
+const fmt = (v,d=1)=> (v===null||v===undefined||Number.isNaN(v)) ? '—' : (+v).toFixed(d);
+const lastNonNull = arr => { if(!arr) return null; for(let i=arr.length-1;i>=0;i--) if(arr[i]!=null) return arr[i]; return null; };
+
+const charts = {};
+function mk(id){ const c = echarts.init(document.getElementById(id), null,
+                 {renderer:'canvas'}); charts[id]=c; return c; }
+function tip(extra){ return Object.assign({trigger:'axis',backgroundColor:col('--panel2'),
+   borderColor:col('--border'),textStyle:{color:col('--text')}}, extra||{}); }
+
+echarts.registerMap('US', US_GEOJSON);
+
+// ---- build state list ----
+const states = Object.values(DASH.states).sort((a,b)=>a.name.localeCompare(b.name));
+const byName = {}; states.forEach(s=>byName[s.name]=s);
+let current = null;
+
+document.getElementById('genTime').textContent =
+   'Updated ' + (DASH.generated_at || '').replace('T',' ').replace('Z',' UTC');
+
+// dropdown (United States first, then states A–Z)
+const sel = document.getElementById('stateSelect');
+const usEntry = DASH.states['US'];
+const dropdownStates = (usEntry?[usEntry]:[]).concat(states.filter(s=>s.usps!=='US'));
+dropdownStates.forEach(s=>{ const o=document.createElement('option');
+   o.value=s.usps; o.textContent=s.name; sel.appendChild(o); });
+sel.addEventListener('change', ()=> selectState(DASH.states[sel.value]));
+
+// ---------- MAP (selectable shading metric) ----------
+const mapChart = mk('mapChart');
+// only real states (exclude the national "US" pseudo-entry) shade the map
+const mapStates = states.filter(s=>s.usps!=='US');
+
+function setMapMetric(metric){
+  let data, vm, cap, tipfmt;
+  if(metric==='ge'){
+    data = mapStates.filter(s=>s.condition_latest&&s.condition_latest.ge!=null)
+      .map(s=>({name:s.name,value:s.condition_latest.ge}));
+    vm={min:0,max:100,text:['G+E %',''],
+        inRange:{color:[col('--vpoor'),col('--poor'),col('--fair'),col('--good'),col('--exc')]}};
+    cap='Shaded by current G+E condition (%)';
+    tipfmt=p=> p.name+(p.value!=null&&!Number.isNaN(p.value)?': G+E '+fmt(p.value,0)+'%':': no data');
+  } else if(metric==='ndvi'){
+    data = mapStates.map(s=>({name:s.name,value: s.ndvi?lastNonNull(s.ndvi.anomaly):null}))
+      .filter(d=>d.value!=null);
+    const m=Math.max(0.02, ...data.map(d=>Math.abs(d.value)));
+    vm={min:-m,max:m,text:['+Δ','−Δ'],
+        inRange:{color:['#c08457','#e8d9c0','#2f8f57']}};
+    cap='Shaded by NDVI deviation from normal (Δ NDVI)';
+    tipfmt=p=> p.name+(p.value!=null&&!Number.isNaN(p.value)?': Δ '+(p.value>=0?'+':'')+fmt(p.value,3):': no data');
+  } else {
+    data = mapStates.filter(s=>s.production).map(s=>({name:s.name,value:s.production.share}));
+    const mx=Math.max(1, ...data.map(d=>d.value));
+    vm={min:0,max:Math.ceil(mx),text:['% of US',''],
+        inRange:{color:['#16241d','#2f8f57','#8ff0b5']}};
+    cap='Shaded by share of US corn production (%)';
+    tipfmt=p=> p.name+(p.value!=null&&!Number.isNaN(p.value)?': '+fmt(p.value,1)+'% of US corn':': no data');
+  }
+  mapChart.setOption({
+    tooltip:{trigger:'item',formatter:tipfmt,backgroundColor:col('--panel2'),
+       borderColor:col('--border'),textStyle:{color:col('--text')}},
+    visualMap:Object.assign({left:'left',bottom:0,calculable:false,textStyle:{color:col('--muted')}},vm),
+    series:[{type:'map',map:'US',roam:false,data:data,
+       itemStyle:{areaColor:col('--panel2'),borderColor:col('--border')},
+       emphasis:{itemStyle:{areaColor:col('--accent')},label:{show:false}},
+       select:{itemStyle:{areaColor:col('--accent')},label:{show:false}},
+       label:{show:false}}]
+  }, true);
+  document.getElementById('mapCap').textContent = cap;
+  if(current && current.usps!=='US') mapChart.dispatchAction({type:'select',seriesIndex:0,name:current.name});
+}
+mapChart.on('click', p=>{ if(byName[p.name]) selectState(byName[p.name]); });
+const mapMetricSel=document.getElementById('mapMetric');
+mapMetricSel.addEventListener('change', ()=> setMapMetric(mapMetricSel.value));
+setMapMetric('production');
+
+// init the rest
+mk('soilGauge'); mk('soilSpark'); mk('prodChart'); mk('donutChart'); mk('geChart');
+mk('yieldChart'); mk('devChart'); mk('corrChart');
+mk('wxTemp'); mk('wxPrecip'); mk('gddChart'); mk('ndviChart'); mk('ndviDevChart');
+
+function clearChart(id,msg){ charts[id].clear();
+  charts[id].setOption({graphic:{type:'text',left:'center',top:'middle',
+     style:{text:msg||'No data',fill:col('--muted'),font:'italic 13px Segoe UI'}}}); }
+
+// ---------- SOIL ----------
+function renderSoil(s){
+  const sm = s.soil_moisture;
+  const sub = document.getElementById('soilSub');
+  if(!sm){ clearChart('soilGauge','No data'); charts['soilSpark'].clear();
+    sub.textContent=''; return; }
+  charts['soilGauge'].setOption({
+    series:[{type:'gauge',min:0,max:0.5,radius:'82%',center:['50%','56%'],
+      startAngle:215,endAngle:-35,splitNumber:5,
+      progress:{show:true,width:13,roundCap:true,itemStyle:{color:col('--line')}},
+      axisLine:{lineStyle:{width:13,color:[[1,col('--panel2')]]}},
+      axisLabel:{show:false},
+      axisTick:{show:false},splitLine:{show:false},pointer:{show:false},anchor:{show:false},
+      title:{show:false},
+      detail:{valueAnimation:false,offsetCenter:[0,'0%'],
+        formatter:()=>'{v|'+sm.current.toFixed(3)+'}\n{u|m³/m³ · 0–27 cm}',
+        rich:{v:{fontSize:28,fontWeight:700,color:col('--text'),lineHeight:30},
+              u:{fontSize:10,color:col('--muted'),lineHeight:16}}},
+      data:[{value:sm.current}]}]
+  });
+  charts['soilSpark'].setOption({
+    grid:{left:30,right:8,top:8,bottom:18},
+    xAxis:{type:'category',data:sm.dates,axisLabel:{color:col('--muted'),fontSize:9,interval:3},
+      axisLine:{lineStyle:{color:col('--border')}}},
+    yAxis:{type:'value',scale:true,axisLabel:{show:false},splitLine:{show:false},axisLine:{show:false}},
+    tooltip:tip(),
+    series:[{type:'line',data:sm.values,smooth:true,showSymbol:false,
+      lineStyle:{color:col('--line')},areaStyle:{color:'rgba(108,178,235,.15)'}}]
+  });
+  sub.textContent = '16-day forecast · '+(s.corn_point?('corn pt '+s.corn_point.lat+', '+s.corn_point.lon):'');
+}
+
+// ---------- PHENOLOGY ----------
+function renderPhen(s){
+  const p = s.phenology;
+  const body = document.getElementById('phenBody');
+  const asof = document.getElementById('phenAsOf');
+  if(!p){ asof.textContent=''; body.innerHTML='<div class="nodata">No USDA progress data</div>'; return; }
+  asof.textContent = p.as_of ? ('As of '+p.as_of) : '';
+  const rows=[['Planted','planted'],['Silking','silking'],['Dough','dough'],['Mature','mature']];
+  let h='<table class="phen"><tr><th>Stage</th><th style="text-align:right">% complete</th></tr>';
+  rows.forEach(([label,k])=>{ const v=p[k];
+    h+='<tr><td>'+label+'<div class="bar" style="width:'+(v||0)+'%"></div></td>'+
+       '<td class="val">'+(v==null?'—':fmt(v,0)+'%')+'</td></tr>'; });
+  h+='</table>'; body.innerHTML=h;
+}
+
+// ---------- PRODUCTION SHARE + RANK ----------
+function renderProd(s){
+  const P = DASH.production;
+  const sub = document.getElementById('prodSub');
+  if(!P || !P.ranking || !P.ranking.length){ sub.textContent=''; clearChart('prodChart','No production data'); return; }
+  const me = s.production;
+  if(s.usps==='US'){
+    const b = s.national_production_bu;
+    sub.innerHTML = '<b style="color:var(--accent);font-size:20px">United States</b>'
+      + ' &nbsp;·&nbsp; '+(s.production_year||'')+' total '+(b?(b/1e9).toFixed(2)+'B bu':'')
+      + ' &nbsp;·&nbsp; top producers';
+  } else if(me){
+    sub.innerHTML = '<b style="color:var(--accent);font-size:22px">'+fmt(me.share,1)+'%</b>'
+      + ' of US corn &nbsp;·&nbsp; rank <b>#'+me.rank+'</b> of '+me.of+' &nbsp;·&nbsp; '+me.year;
+  } else {
+    sub.innerHTML = s.name+' has no reported corn production — showing US leaders';
+  }
+  let top = P.ranking.slice(0,12);
+  if(me && !top.find(r=>r.usps===s.usps)){
+    top = P.ranking.slice(0,11);
+    const cur = P.ranking.find(r=>r.usps===s.usps);
+    if(cur) top.push(cur);
+  }
+  top = top.slice().sort((a,b)=> a.share-b.share);   // ascending → biggest on top
+  charts['prodChart'].setOption({
+    grid:{left:98,right:48,top:6,bottom:26},
+    tooltip:tip({trigger:'item',formatter:p=> p.name+': '+fmt(p.value,1)+'% of US corn'}),
+    xAxis:Object.assign({type:'value',name:'% of US',nameLocation:'middle',nameGap:24,
+       axisLabel:{formatter:'{value}%',color:col('--muted')}},AXIS),
+    yAxis:Object.assign({type:'category',data:top.map(r=>r.name),
+       axisLabel:{color:col('--muted'),fontSize:10}},AXIS),
+    series:[{type:'bar',barWidth:'62%',data:top.map(r=>({value:r.share,
+       itemStyle:{color:(me && r.usps===s.usps)?col('--accent'):col('--line'),
+                  borderRadius:[0,3,3,0]}})),
+       label:{show:true,position:'right',color:col('--muted'),fontSize:10,
+         formatter:p=>fmt(p.value,1)+'%'}}]
+  },true);
+}
+
+// ---------- DONUT ----------
+function renderDonut(s){
+  const c = s.condition_latest;
+  document.getElementById('condAsOf').textContent = c&&c.week_ending?('Week ending '+c.week_ending):'';
+  if(!c){ clearChart('donutChart','No USDA condition data'); return; }
+  const data=[
+    {value:c.excellent,name:'Excellent',itemStyle:{color:col('--exc')}},
+    {value:c.good,name:'Good',itemStyle:{color:col('--good')}},
+    {value:c.fair,name:'Fair',itemStyle:{color:col('--fair')}},
+    {value:c.poor,name:'Poor',itemStyle:{color:col('--poor')}},
+    {value:c.very_poor,name:'Very poor',itemStyle:{color:col('--vpoor')}}
+  ].filter(d=>d.value!=null);
+  charts['donutChart'].setOption({
+    tooltip:{trigger:'item',formatter:'{b}: {c}%',backgroundColor:col('--panel2'),
+       borderColor:col('--border'),textStyle:{color:col('--text')}},
+    legend:{bottom:0,textStyle:{color:col('--muted'),fontSize:11},itemHeight:9,itemWidth:12},
+    title:{text:'G+E',subtext:fmt(c.ge,0)+'%',left:'center',top:'34%',
+       textStyle:{color:col('--muted'),fontSize:13},
+       subtextStyle:{color:col('--exc'),fontSize:26,fontWeight:700}},
+    series:[{type:'pie',radius:['52%','74%'],center:['50%','42%'],avoidLabelOverlap:true,
+       label:{show:false},labelLine:{show:false},data:data}]
+  },true);
+}
+
+// ---------- G+E LINE w/ bands ----------
+function renderGe(s){
+  const g = s.ge_line;
+  if(!g || !g.weeks.length){ clearChart('geChart','No USDA condition data'); return; }
+  const band = g.max.map((mx,i)=> (mx!=null && g.min[i]!=null) ? +(mx-g.min[i]).toFixed(1) : null);
+  charts['geChart'].setOption({
+    tooltip:tip(),
+    legend:{data:['This year','Median'],bottom:0,textStyle:{color:col('--muted'),fontSize:11}},
+    grid:{left:36,right:14,top:12,bottom:34},
+    xAxis:Object.assign({type:'category',data:g.weeks,boundaryGap:false},AXIS),
+    yAxis:Object.assign({type:'value',min:0,max:100,name:'%'},AXIS),
+    series:[
+      {name:'min',type:'line',data:g.min,stack:'b',symbol:'none',
+         lineStyle:{opacity:0},areaStyle:{opacity:0},silent:true,tooltip:{show:false}},
+      {name:'range',type:'line',data:band,stack:'b',symbol:'none',
+         lineStyle:{opacity:0},areaStyle:{color:'rgba(58,166,117,.15)'},silent:true,tooltip:{show:false}},
+      {name:'Median',type:'line',data:g.median,symbol:'none',
+         lineStyle:{type:'dashed',color:col('--muted'),width:1.5},connectNulls:true},
+      {name:'This year',type:'line',data:g.current,symbol:'circle',symbolSize:5,
+         lineStyle:{color:col('--exc'),width:3},itemStyle:{color:col('--exc')},connectNulls:true}
+    ]
+  },true);
+}
+
+// ---------- YIELD + TREND ----------
+function renderYield(s){
+  const y = s.yield;
+  if(!y){ clearChart('yieldChart','No USDA yield data'); return; }
+  charts['yieldChart'].setOption({
+    tooltip:tip(),
+    legend:{data:['Yield','Trend'],bottom:0,textStyle:{color:col('--muted'),fontSize:11}},
+    grid:{left:42,right:14,top:12,bottom:34},
+    xAxis:Object.assign({type:'category',data:y.years},AXIS),
+    yAxis:Object.assign({type:'value',scale:true,name:'bu/ac'},AXIS),
+    series:[
+      {name:'Yield',type:'line',data:y.values,symbol:'circle',symbolSize:4,
+         lineStyle:{color:col('--accent'),width:2},itemStyle:{color:col('--accent')}},
+      {name:'Trend',type:'line',data:y.trend,symbol:'none',
+         lineStyle:{color:col('--muted'),width:1.5,type:'dashed'}}
+    ]
+  },true);
+}
+
+// ---------- YIELD DEVIATION ----------
+function renderDev(s){
+  const d = s.yield_deviation;
+  if(!d){ clearChart('devChart','No USDA yield data'); return; }
+  charts['devChart'].setOption({
+    tooltip:tip(),
+    grid:{left:42,right:14,top:12,bottom:30},
+    xAxis:Object.assign({type:'category',data:d.years},AXIS),
+    yAxis:Object.assign({type:'value',name:'bu/ac'},AXIS),
+    series:[{type:'bar',data:d.residuals.map(v=>({value:v,
+        itemStyle:{color: v==null?col('--muted'):(v>=0?col('--pos'):col('--neg'))}})),
+        markLine:{symbol:'none',silent:true,data:[{yAxis:0}],
+           lineStyle:{color:col('--border')}}}]
+  },true);
+}
+
+// ---------- CORRELATION ----------
+function renderCorr(s){
+  const c = s.correlation;
+  const sub = document.getElementById('corrSub');
+  if(!c){ sub.textContent=''; clearChart('corrChart','Need overlapping yield + condition years'); return; }
+  sub.textContent = 'G+E vs. detrended yield  ·  r = '+fmt(c.r,2)+'  ·  n = '+c.n+' years';
+  charts['corrChart'].setOption({
+    tooltip:{trigger:'item',backgroundColor:col('--panel2'),borderColor:col('--border'),
+       textStyle:{color:col('--text')},
+       formatter:p=> p.seriesType==='scatter' ? ('G+E '+fmt(p.value[0],0)+'%, Δyield '+fmt(p.value[1],1)+' bu/ac') : ''},
+    grid:{left:46,right:16,top:14,bottom:38},
+    xAxis:Object.assign({type:'value',scale:true,name:'Season G+E %',nameLocation:'middle',nameGap:22},AXIS),
+    yAxis:Object.assign({type:'value',scale:true,name:'Δ yield (bu/ac)'},AXIS),
+    series:[
+      {type:'scatter',data:c.points,symbolSize:8,itemStyle:{color:col('--line'),opacity:.8}},
+      c.line ? {type:'line',data:c.line,symbol:'none',
+         lineStyle:{color:col('--accent'),width:2}} : {}
+    ]
+  },true);
+}
+
+// ---------- WEATHER ANOMALY ----------
+function renderWx(s){
+  const w = s.weather_anomaly;
+  if(!w){ clearChart('wxTemp','No data'); charts['wxPrecip'].clear(); return; }
+  charts['wxTemp'].setOption({
+    title:{text:'Temp (°C)',left:'center',top:4,textStyle:{color:col('--muted'),fontSize:11}},
+    tooltip:tip(),grid:{left:34,right:8,top:30,bottom:24},
+    xAxis:Object.assign({type:'category',data:w.windows},AXIS),
+    yAxis:Object.assign({type:'value',name:''},AXIS),
+    series:[{type:'bar',data:w.temp.map(v=>({value:v,
+      itemStyle:{color: v==null?col('--muted'):(v>=0?col('--neg'):col('--line'))}})),
+      markLine:{symbol:'none',silent:true,data:[{yAxis:0}],lineStyle:{color:col('--border')}}}]
+  },true);
+  charts['wxPrecip'].setOption({
+    title:{text:'Precip (% of normal)',left:'center',top:4,textStyle:{color:col('--muted'),fontSize:11}},
+    tooltip:tip(),grid:{left:38,right:8,top:30,bottom:24},
+    xAxis:Object.assign({type:'category',data:w.windows},AXIS),
+    yAxis:Object.assign({type:'value'},AXIS),
+    series:[{type:'bar',data:w.precip_pct.map(v=>({value:v,
+      itemStyle:{color: v==null?col('--muted'):(v>=100?col('--line'):col('--poor'))}})),
+      markLine:{symbol:'none',silent:true,data:[{yAxis:100}],
+        lineStyle:{color:col('--muted'),type:'dashed'},label:{show:false}}}]
+  },true);
+}
+
+// ---------- NDVI (value vs mean  +  deviation from mean) ----------
+function renderNdvi(s){
+  const n = s.ndvi;
+  const sub = document.getElementById('ndviSub');
+  if(!n){ sub.textContent=''; clearChart('ndviChart','NDVI unavailable'); charts['ndviDevChart'].clear(); return; }
+  const yrs = n.baseline_years;
+  sub.textContent = n.source + (yrs? ' · vs. prior '+yrs+'-yr mean (the "standard")':'');
+
+  // LEFT: NDVI value vs. the mean
+  const hasMean = n.baseline.some(v=>v!=null);
+  const legend = hasMean ? ['NDVI','Mean'] : ['NDVI'];
+  charts['ndviChart'].setOption({
+    title:{text:'NDVI vs. mean',left:'center',top:2,textStyle:{color:col('--muted'),fontSize:11}},
+    tooltip:tip(),
+    legend:{data:legend,bottom:0,textStyle:{color:col('--muted'),fontSize:11}},
+    grid:{left:48,right:16,top:28,bottom:34},
+    xAxis:Object.assign({type:'category',data:n.dates},AXIS),
+    yAxis:Object.assign({type:'value',scale:true,name:'NDVI'},AXIS),
+    series:[
+      {name:'Mean',type:'line',data:n.baseline,symbol:'none',
+         lineStyle:{type:'dashed',color:col('--muted'),width:1.5},connectNulls:true},
+      {name:'NDVI',type:'line',data:n.values,symbol:'circle',symbolSize:4,
+         lineStyle:{color:col('--exc'),width:2.5},itemStyle:{color:col('--exc')},connectNulls:true}
+    ]
+  },true);
+
+  // RIGHT: deviation from the mean (anomaly). Green = healthier than normal, brown = below normal.
+  if(!n.anomaly.some(v=>v!=null)){ clearChart('ndviDevChart','No deviation (needs baseline years)'); return; }
+  charts['ndviDevChart'].setOption({
+    title:{text:'Deviation from mean',left:'center',top:2,textStyle:{color:col('--muted'),fontSize:11}},
+    tooltip:tip({valueFormatter:v=> (v>=0?'+':'')+fmt(v,3)}),
+    grid:{left:52,right:16,top:28,bottom:34},
+    xAxis:Object.assign({type:'category',data:n.dates},AXIS),
+    yAxis:Object.assign({type:'value',name:'Δ NDVI'},AXIS),
+    series:[{type:'bar',data:n.anomaly.map(v=>({value:v,
+       itemStyle:{color: v==null?col('--muted'):(v>=0?col('--pos'):'#c08457')}})),
+       markLine:{symbol:'none',silent:true,data:[{yAxis:0}],lineStyle:{color:col('--border')}}}]
+  },true);
+}
+
+// ---------- GROWING DEGREE DAYS ----------
+function renderGdd(s){
+  const g = s.gdd;
+  const sub = document.getElementById('gddSub');
+  if(!g || !g.dates || !g.dates.length){ sub.textContent=''; clearChart('gddChart','No GDD data'); return; }
+  const pc = g.pct_of_normal;
+  const pcTxt = pc!=null ? (fmt(pc,0)+'% of normal') : '(normal pending)';
+  const headColor = pc==null ? col('--accent') : (pc>=100?col('--pos'):'#c08457');
+  const thru = g.through ? g.through.slice(5) : (g.dates && g.dates.length ? g.dates[g.dates.length-1] : '');
+  sub.innerHTML = '<b style="color:'+headColor+'">'+fmt(g.to_date,0)+' GDU</b>'
+    + ' through '+thru+'  ·  '+pcTxt;
+  charts['gddChart'].setOption({
+    tooltip:tip(),
+    legend:{data:['Actual','Normal'],bottom:0,textStyle:{color:col('--muted'),fontSize:11}},
+    grid:{left:50,right:14,top:12,bottom:34},
+    xAxis:Object.assign({type:'category',data:g.dates},AXIS),
+    yAxis:Object.assign({type:'value',name:'GDU'},AXIS),
+    series:[
+      {name:'Normal',type:'line',data:g.normal_cum,symbol:'none',
+        lineStyle:{type:'dashed',color:col('--muted'),width:1.5}},
+      {name:'Actual',type:'line',data:g.actual_cum,symbol:'none',
+        lineStyle:{color:col('--accent'),width:2.5},areaStyle:{color:'rgba(245,166,35,.10)'}}
+    ]
+  },true);
+}
+
+// ---------- KPI STRIP ----------
+function kpiCard(label,value,sub,color){
+  return '<div class="kpi"><div class="kpi-l">'+label+'</div>'
+    +'<div class="kpi-v"'+(color?' style="color:'+color+'"':'')+'>'+value+'</div>'
+    +'<div class="kpi-s">'+(sub||'&nbsp;')+'</div></div>';
+}
+function renderKpi(s){
+  const c=[];
+  // production
+  if(s.usps==='US') c.push(kpiCard('Production','U.S.','all states',col('--accent')));
+  else if(s.production) c.push(kpiCard('Production rank','#'+s.production.rank,
+       fmt(s.production.share,1)+'% of US',col('--accent')));
+  else c.push(kpiCard('Production rank','—','no data'));
+  // G+E condition + weekly change
+  if(s.condition_latest && s.condition_latest.ge!=null){
+    let d=null; const cur=s.ge_line&&s.ge_line.current;
+    if(cur){ const nn=cur.filter(v=>v!=null); if(nn.length>=2) d=nn[nn.length-1]-nn[nn.length-2]; }
+    const dtxt = d==null?'this week':((d>=0?'▲ +':'▼ ')+fmt(Math.abs(d),0)+' pts vs last wk');
+    c.push(kpiCard('G+E condition',fmt(s.condition_latest.ge,0)+'%',dtxt,
+       d==null?null:(d>=0?col('--pos'):col('--neg'))));
+  } else c.push(kpiCard('G+E condition','—',''));
+  // yield vs trend
+  const dev = s.yield_deviation && lastNonNull(s.yield_deviation.residuals);
+  if(dev!=null) c.push(kpiCard('Yield vs trend',(dev>=0?'+':'')+fmt(dev,1),'bu/ac vs trend',
+       dev>=0?col('--pos'):col('--neg')));
+  else c.push(kpiCard('Yield vs trend','—',''));
+  // NDVI vs normal
+  const na = s.ndvi && lastNonNull(s.ndvi.anomaly);
+  if(na!=null) c.push(kpiCard('NDVI vs normal',(na>=0?'+':'')+fmt(na,3),'latest composite',
+       na>=0?col('--pos'):'#c08457'));
+  else c.push(kpiCard('NDVI vs normal','—',''));
+  // soil moisture
+  if(s.soil_moisture) c.push(kpiCard('Soil moisture',fmt(s.soil_moisture.current,3),
+       'm³/m³ · 0–27 cm',col('--line')));
+  else c.push(kpiCard('Soil moisture','—',''));
+  // GDD vs normal
+  if(s.gdd && s.gdd.to_date!=null){
+    const p=s.gdd.pct_of_normal;
+    if(p!=null) c.push(kpiCard('GDD vs normal',fmt(p,0)+'%',fmt(s.gdd.to_date,0)+' GDU to date',
+       p>=100?col('--pos'):'#c08457'));
+    else c.push(kpiCard('GDD to date',fmt(s.gdd.to_date,0),'GDU · normal pending',col('--accent')));
+  } else c.push(kpiCard('GDD vs normal','—',''));
+  document.getElementById('kpis').innerHTML = c.join('');
+}
+
+// ---------- SELECT ----------
+function selectState(s){
+  if(!s) return;
+  current = s;
+  document.getElementById('stateName').textContent = s.name;
+  sel.value = s.usps;
+  mapChart.dispatchAction({type:'unselect',seriesIndex:0});
+  if(s.usps!=='US') mapChart.dispatchAction({type:'select',seriesIndex:0,name:s.name});
+  renderKpi(s);
+  renderSoil(s); renderPhen(s); renderProd(s); renderDonut(s); renderGe(s);
+  renderYield(s); renderDev(s); renderCorr(s); renderWx(s); renderGdd(s); renderNdvi(s);
+}
+
+window.addEventListener('resize', ()=>{ for(const k in charts) charts[k].resize(); });
+
+// default: national overview, else first state with data
+selectState(DASH.states['US'] || states.find(s=>s.has_data) || states[0]);
+</script>
+</body>
+</html>
